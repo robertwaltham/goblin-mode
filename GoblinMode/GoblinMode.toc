@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Goblin Mode
-## Notes: Account-wide reagent and consumable counts with auction and vendor sell values.
-## Version: 1.3.0
+## Notes: Account-wide reagents, consumables, and carried gold with auction and vendor sell estimates.
+## Version: 1.4.0
 ## Category: Auctions
 ## IconTexture: Interface\Icons\INV_Misc_Coin_01
 ## OptionalDeps: Auctionator

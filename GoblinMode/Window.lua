@@ -74,6 +74,27 @@ local function showRowTooltip(button)
     GameTooltip:Show()
 end
 
+local function showCharacterTooltip(footer)
+    GameTooltip:SetOwner(footer, "ANCHOR_TOPLEFT")
+    GameTooltip:AddLine("Character scans", unpack(gold))
+    local scanned = "|cff9ed491scanned|r"
+    local needed = "|cffffc46bscan needed|r"
+    for _, entry in ipairs(footer.characters) do
+        local bags = entry.bagsScanned and scanned or needed
+        local bank = entry.bankScanned and scanned or needed
+        local mail = entry.mailScanned and scanned or needed
+        if entry.mailIncomplete then
+            mail = "|cffffc46bscan incomplete|r"
+        end
+        local status = string.format("Bags %s   Bank %s   Mail %s", bags, bank, mail)
+        if not entry.balanceRecorded then
+            status = status .. "   |cffffc46bGold balance missing|r"
+        end
+        GameTooltip:AddDoubleLine(entry.name, status, 1, 1, 1, 1, 1, 1)
+    end
+    GameTooltip:Show()
+end
+
 local function renderRows()
     local offset = math.floor(window.scrollbar:GetValue() + 0.5)
     for index, button in ipairs(window.rows) do
@@ -154,7 +175,8 @@ function addon.RefreshWindow()
     elseif stats.unavailable > 0 then
         window.emptyMessage = "Item data is unavailable."
     end
-    window.total:SetText(stats.value and money(stats.value, 14) or "Unavailable")
+    window.total:SetText(stats.total and money(stats.total, 14) or "Unavailable")
+    window.cash:SetText(stats.cash and money(stats.cash, 14) or "Unavailable")
 
     local priceStatus = ""
     if stats.unpriced > 0 then
@@ -163,33 +185,25 @@ function addon.RefreshWindow()
         priceStatus = "Vendor sell prices"
     elseif stats.vendorPriced > 0 then
         priceStatus = "Auctionator + vendor sell prices"
-    elseif stats.value then
-        priceStatus = "Auctionator cached prices"
     end
     window.priceStatus:SetText(priceStatus)
 
-    local coverage = string.format("%d %s tracked", stats.characters, stats.characters == 1 and "character" or "characters")
-    if stats.missingInventories > 0 then
-        local scans = stats.missingInventories == 1 and "bag scan" or "bag scans"
-        coverage = coverage .. string.format("  |  %d %s needed", stats.missingInventories, scans)
-    end
-    local gaps = {}
-    if stats.missingBanks > 0 then
-        gaps[#gaps + 1] = string.format("%d %s to visit", stats.missingBanks, stats.missingBanks == 1 and "bank" or "banks")
-    end
-    if stats.missingMail > 0 then
-        gaps[#gaps + 1] = string.format("%d %s to open", stats.missingMail, stats.missingMail == 1 and "mailbox" or "mailboxes")
-    end
-    if stats.partialMail > 0 then
-        gaps[#gaps + 1] = string.format("%d incomplete %s", stats.partialMail, stats.partialMail == 1 and "inbox" or "inboxes")
-    end
+    table.sort(stats.characters, function(a, b) return a.name < b.name end)
+    local footer = window.footer
+    footer.characters = stats.characters
+    local tracked = #stats.characters
+    footer.count:SetText(string.format("%d %s tracked", tracked, tracked == 1 and "character" or "characters"))
+
+    local itemStatus = ""
     if stats.loading > 0 then
-        gaps[#gaps + 1] = "Loading item data"
+        itemStatus = "Loading item data"
     elseif stats.unavailable > 0 then
-        gaps[#gaps + 1] = "Some item data is unavailable"
+        itemStatus = "Some item data is unavailable"
     end
-    window.coverage:SetText(coverage)
-    window.scanStatus:SetText(table.concat(gaps, "  |  "))
+    footer.itemStatus:SetText(itemStatus)
+    if GameTooltip:IsOwned(footer) then
+        showCharacterTooltip(footer)
+    end
     showFilteredRows(false)
 end
 
@@ -228,9 +242,7 @@ local function createWindow()
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
     local title = label(header, "GameFontNormalHuge", "Goblin Mode", gold)
-    title:SetPoint("TOPLEFT", 65, -16)
-    local subtitle = label(header, "GameFontHighlightSmall", "Reagents and consumables", muted)
-    subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
+    title:SetPoint("LEFT", icon, "RIGHT", 12, 0)
 
     local close = CreateFrame("Button", nil, header, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -2, -2)
@@ -240,6 +252,12 @@ local function createWindow()
     totalLabel:SetPoint("TOPRIGHT", -42, -13)
     window.total = label(header, "GameFontHighlightLarge", "", gold)
     window.total:SetPoint("TOPRIGHT", totalLabel, "BOTTOMRIGHT", 0, -3)
+
+    local cashLabel = label(header, "GameFontHighlightSmall", "Carried money", muted)
+    cashLabel:SetPoint("TOPRIGHT", totalLabel, "TOPRIGHT", -164, 0)
+    window.cash = label(header, "GameFontHighlightLarge", "", gold)
+    window.cash:SetPoint("TOPRIGHT", cashLabel, "BOTTOMRIGHT", 0, -3)
+
     window.priceStatus = label(header, "GameFontHighlightSmall", "", muted)
     window.priceStatus:SetPoint("TOPRIGHT", window.total, "BOTTOMRIGHT", 0, -4)
 
@@ -334,14 +352,26 @@ local function createWindow()
 
     window.empty = label(list, "GameFontHighlight", "", muted)
     window.empty:SetPoint("CENTER")
-    window.coverage = label(window, "GameFontHighlightSmall", "", gold)
-    window.coverage:SetPoint("TOPLEFT", list, "BOTTOMLEFT", 1, -11)
-    window.scanStatus = label(window, "GameFontHighlightSmall", "", muted)
-    window.scanStatus:SetPoint("TOPLEFT", window.coverage, "BOTTOMLEFT", 0, -5)
+    local footer = CreateFrame("Frame", nil, window)
+    window.footer = footer
+    footer:SetPoint("TOPLEFT", list, "BOTTOMLEFT", 0, -8)
+    footer:SetPoint("BOTTOMRIGHT", window, "BOTTOMRIGHT", -16, 13)
+    fill(footer, "BACKGROUND", 0.11, 0.16, 0.12)
+    footer.count = label(footer, "GameFontHighlightSmall", "", gold)
+    footer.count:SetPoint("LEFT", 9, 0)
+    footer.itemStatus = label(footer, "GameFontHighlightSmall", "", muted)
+    footer.itemStatus:SetPoint("RIGHT", -9, 0)
+    footer:EnableMouse(true)
+    footer:SetScript("OnEnter", showCharacterTooltip)
+    footer:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     window:SetScript("OnShow", addon.RefreshWindow)
     window:SetScript("OnHide", function()
         window.search:ClearFocus()
+        if GameTooltip:IsOwned(footer) then
+            GameTooltip:Hide()
+            return
+        end
         for _, button in ipairs(window.rows) do
             if GameTooltip:IsOwned(button) then
                 GameTooltip:Hide()

@@ -170,10 +170,7 @@ end
 
 function addon.GetHoldings()
     local rows, byID = {}, {}
-    local stats = {
-        characters = 0, missingInventories = 0, missingBanks = 0, missingMail = 0, partialMail = 0,
-        unpriced = 0, vendorPriced = 0, loading = 0, unavailable = 0,
-    }
+    local stats = { characters = {}, unpriced = 0, vendorPriced = 0, loading = 0, unavailable = 0 }
     local now = GetServerTime()
 
     local function addLocation(items, key, name, location)
@@ -194,30 +191,34 @@ function addon.GetHoldings()
     end
 
     for key, record in pairs(addon.db.characters) do
-        stats.characters = stats.characters + 1
+        if record.money ~= nil then
+            stats.cash = (stats.cash or 0) + record.money
+        end
         local name = record.name
         -- Older snapshots contain counts grouped by ID without per-copy binding.
-        if record.inventory and record.inventory.items then
-            addLocation(record.inventory.items, key, name, "inventory")
-        else
-            stats.missingInventories = stats.missingInventories + 1
+        local inventory = record.inventory and record.inventory.items
+        local bank = record.bank and record.bank.items
+        local mail = record.mail and record.mail.bindingChecked and record.mail
+        stats.characters[#stats.characters + 1] = {
+            name = name,
+            bagsScanned = inventory ~= nil,
+            bankScanned = bank ~= nil,
+            mailScanned = mail and true or false,
+            mailIncomplete = mail and mail.incomplete,
+            balanceRecorded = record.money ~= nil,
+        }
+        if inventory then
+            addLocation(inventory, key, name, "inventory")
         end
-        if record.bank and record.bank.items then
-            addLocation(record.bank.items, key, name, "bank")
-        else
-            stats.missingBanks = stats.missingBanks + 1
+        if bank then
+            addLocation(bank, key, name, "bank")
         end
-        if record.mail and record.mail.bindingChecked then
-            if record.mail.incomplete then
-                stats.partialMail = stats.partialMail + 1
-            end
-            for _, message in ipairs(record.mail.messages) do
+        if mail then
+            for _, message in ipairs(mail.messages) do
                 if not message.expires or message.expires > now then
                     addLocation(message.items, key, name, "mail")
                 end
             end
-        else
-            stats.missingMail = stats.missingMail + 1
         end
     end
 
@@ -246,6 +247,9 @@ function addon.GetHoldings()
         elseif data == nil then
             stats.loading = stats.loading + 1
         end
+    end
+    if stats.cash or stats.value then
+        stats.total = (stats.cash or 0) + (stats.value or 0)
     end
     return rows, stats
 end
@@ -287,6 +291,7 @@ local function initialize()
     local key = UnitGUID("player")
     character = addon.db.characters[key] or {}
     character.name = realm and realm ~= "" and (name .. " - " .. realm) or name
+    character.money = GetMoney()
     addon.db.characters[key] = character
 
     scanInventory()
@@ -300,7 +305,7 @@ end
 
 local events = CreateFrame("Frame")
 for _, event in ipairs({
-    "PLAYER_LOGIN", "PLAYER_LOGOUT", "BAG_UPDATE_DELAYED", "BANK_TABS_CHANGED",
+    "PLAYER_LOGIN", "PLAYER_LOGOUT", "PLAYER_MONEY", "BAG_UPDATE_DELAYED", "BANK_TABS_CHANGED",
     "PLAYERBANKSLOTS_CHANGED", "BAG_CONTAINER_UPDATE", "PLAYER_INTERACTION_MANAGER_FRAME_SHOW",
     "PLAYER_INTERACTION_MANAGER_FRAME_HIDE", "MAIL_SHOW", "MAIL_CLOSED",
     "MAIL_INBOX_UPDATE", "ITEM_CHANGED", "ITEM_DATA_LOAD_RESULT",
@@ -313,6 +318,8 @@ events:SetScript("OnEvent", function(_, event, arg1, arg2)
         initialize()
     elseif not character then
         return
+    elseif event == "PLAYER_MONEY" then
+        character.money = GetMoney()
     elseif event == "BAG_UPDATE_DELAYED" or event == "ITEM_CHANGED" or event == "PLAYER_LOGOUT" then
         scanInventory()
         scanBank()
