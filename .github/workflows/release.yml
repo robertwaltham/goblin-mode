@@ -1,0 +1,36 @@
+name: Release Goblin Mode
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event.deleted == false
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Package addon
+        run: |
+          git archive --format=zip --output="$RUNNER_TEMP/GoblinMode.zip" "$GITHUB_SHA" -- GoblinMode/
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="build-$GITHUB_RUN_NUMBER"
+          if [[ "$GITHUB_RUN_ATTEMPT" != 1 && "$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)" == false ]]; then
+            exit 0
+          fi
+          gh release create "$tag" "$RUNNER_TEMP/GoblinMode.zip" \
+            --target "$GITHUB_SHA" \
+            --title "Goblin Mode build $GITHUB_RUN_NUMBER" \
+            --notes 'Download GoblinMode.zip from Assets and extract it into _forever_/Interface/AddOns/.' \
+            --generate-notes
