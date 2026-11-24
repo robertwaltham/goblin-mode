@@ -32,6 +32,21 @@ local function money(value, size)
     return C_CurrencyInfo.GetCoinTextureString(value, size or 12)
 end
 
+local function hideTooltip(owner)
+    if GameTooltip:IsOwned(owner) then
+        GameTooltip:Hide()
+    end
+end
+
+local function showItemTooltip(icon)
+    local row = icon:GetParent().item
+    if row then
+        GameTooltip:SetOwner(icon, "ANCHOR_RIGHT")
+        GameTooltip:SetHyperlink("item:" .. row.id)
+        GameTooltip:Show()
+    end
+end
+
 local function showRowTooltip(button)
     local row = button.item
     if not row then
@@ -99,7 +114,7 @@ local function renderRows()
     local offset = math.floor(window.scrollbar:GetValue() + 0.5)
     for index, button in ipairs(window.rows) do
         local row = window.filtered[offset + index]
-        local ownsTooltip = GameTooltip:IsOwned(button)
+        local previous = button.item
         button.item = row
         button:SetShown(row ~= nil)
         if row then
@@ -111,12 +126,14 @@ local function renderRows()
             button.value:SetText(row.value and money(row.value) or "No price")
             button.value:SetTextColor(unpack(row.value and gold or muted))
         end
-        if ownsTooltip then
+        if GameTooltip:IsOwned(button) then
             if row then
                 showRowTooltip(button)
             else
                 GameTooltip:Hide()
             end
+        elseif row and (not previous or previous.id ~= row.id) and GameTooltip:IsOwned(button.iconHover) then
+            showItemTooltip(button.iconHover)
         end
     end
 end
@@ -309,6 +326,22 @@ local function createWindow()
         button.icon:SetSize(20, 20)
         button.icon:SetPoint("LEFT", 8, 0)
         button.icon:SetTexCoord(0.06, 0.94, 0.06, 0.94)
+
+        local iconHover = CreateFrame("Frame", nil, button)
+        button.iconHover = iconHover
+        iconHover:SetAllPoints(button.icon)
+        iconHover:EnableMouse(true)
+        iconHover:SetScript("OnEnter", function(self)
+            button:LockHighlight()
+            showItemTooltip(self)
+        end)
+        local function leaveIcon(self)
+            button:UnlockHighlight()
+            hideTooltip(self)
+        end
+        iconHover:SetScript("OnLeave", leaveIcon)
+        iconHover:SetScript("OnHide", leaveIcon)
+
         button.name = label(button, "GameFontHighlight")
         button.name:SetPoint("LEFT", 36, 0)
         button.name:SetWidth(234)
@@ -320,7 +353,7 @@ local function createWindow()
         button.value:SetPoint("RIGHT", -14, 0)
 
         button:SetScript("OnEnter", showRowTooltip)
-        button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        button:SetScript("OnLeave", hideTooltip)
         button:Hide()
         window.rows[index] = button
     end

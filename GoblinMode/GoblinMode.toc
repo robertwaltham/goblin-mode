@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Goblin Mode
 ## Notes: Account-wide reagents, consumables, unbound rare and epic BoEs, and carried gold with auction and vendor sell estimates.
-## Version: 1.5.0
+## Version: 1.5.1
 ## Category: Auctions
 ## IconTexture: Interface\Icons\INV_Misc_Coin_01
 ## OptionalDeps: Auctionator
